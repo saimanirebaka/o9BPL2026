@@ -1,147 +1,719 @@
-<script>
-    let allMatches = [];
-
-    // Automatically load the Excel file when the page opens
-    window.onload = async () => {
-        try {
-            // Make sure the filename exactly matches the one in your folder
-            const response = await fetch('./o9 Badminton Premier league 2026 (Bangalore).xlsx');
-            const arrayBuffer = await response.arrayBuffer();
-            const workbook = XLSX.read(arrayBuffer, {type: 'array'});
-            
-            workbook.SheetNames.forEach(sheetName => {
-                if(sheetName.includes('Form Responses')) return;
-                
-                const sheet = workbook.Sheets[sheetName];
-                const json = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: ''});
-                
-                if (sheetName === 'Court Grid') {
-                    parseCourtGrid(json);
-                } else {
-                    parseCategorySheet(sheetName, json);
-                }
-            });
-
-            // Hide upload UI (not needed anymore) and show search
-            document.getElementById('upload-section').classList.add('hidden');
-            document.getElementById('search-section').classList.remove('hidden');
-            document.getElementById('search-box').focus();
-        } catch (error) {
-            console.error("Error loading Excel file:", error);
-            document.getElementById('upload-section').innerHTML = `<p class="text-red-600 font-bold">Error loading fixtures. Make sure the Excel file is uploaded alongside the HTML.</p>`;
-        }
-    };
-
-    document.getElementById('search-box').addEventListener('input', performSearch);
-
-    function parseCourtGrid(data) {
-        let currentDate = "Date TBD";
-        for (let r = 0; r < data.length; r++) {
-            const row = data[r];
-            if (!row || row.length === 0) continue;
-            
-            const firstCell = String(row[0]).trim();
-            if (firstCell.includes('2026-')) {
-                currentDate = firstCell.split(' ')[0];
-                continue;
-            }
-            if (!firstCell || firstCell.toLowerCase().includes('time') || firstCell.toLowerCase().includes('lunch')) continue;
-            
-            for (let c = 1; c < 6; c++) {
-                const cell = String(row[c]).trim();
-                if (cell && cell.includes('·') && cell.includes('vs')) {
-                    let matchTitle = "Match";
-                    let matchInfo = cell;
-                    
-                    if (cell.includes('|')) {
-                        const parts = cell.split('|');
-                        matchTitle = parts[0].trim();
-                        matchInfo = parts[1].trim();
-                    }
-                    allMatches.push({
-                        type: 'Court Match', sheet: 'Court Grid', date: currentDate,
-                        title: matchTitle, info: matchInfo, rawText: cell, court: `Court ${c}`
-                    });
-                }
-            }
-        }
+<!DOCTYPE html>
+<html lang="en">
+<head><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>o9 Badminton Premier League 2026 — Bangalore Fixtures</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --navy: #0b1528;
+      --navy-mid: #162647;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+      --lime: #84cc16;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --fri-bg: #fef3c7;
+      --fri-fg: #92400e;
+      --sat-bg: #dbeafe;
+      --sat-fg: #1e40af;
+      --sun-bg: #dcfce7;
+      --sun-fg: #166534;
+      --ko-bg: #f3e8ff;
+      --ko-fg: #6b21a8;
     }
-
-    function parseCategorySheet(sheetName, data) {
-        let currentGroup = "";
-        let currentSchedule = "";
-        
-        for (let r = 0; r < data.length; r++) {
-            const row = data[r];
-            if (!row || row.length === 0) continue;
-            
-            let groupName = "";
-            let rowSchedule = "";
-            
-            row.forEach(cell => {
-                const text = String(cell).trim();
-                if (!text) return;
-                if (text.toLowerCase().includes('group') || text.toLowerCase().includes('grp')) groupName = text;
-                if (text.includes('·') && text.includes('Court')) rowSchedule = text;
-            });
-            
-            if (groupName) currentGroup = groupName;
-            if (rowSchedule) currentSchedule = rowSchedule;
-            
-            const rowText = row.filter(cell => String(cell).trim() !== '').join(" | ");
-            
-            if (rowText.length > 5 && !rowText.includes('Day · time') && !rowText.toLowerCase().includes('advances')) {
-                 allMatches.push({
-                    type: 'Group Bracket', sheet: sheetName, date: 'Check Specific Timings',
-                    title: `${sheetName} ${currentGroup ? '- ' + currentGroup : ''}`,
-                    info: rowText, rawText: rowText, court: currentSchedule || 'TBD'
-                });
-            }
-        }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
     }
-
-    function performSearch(e) {
-        const query = e.target.value.toLowerCase().trim();
-        const resultsContainer = document.getElementById('results');
-        resultsContainer.innerHTML = '';
-        
-        if (query.length < 2) return;
-        
-        const filtered = allMatches.filter(m => m.rawText.toLowerCase().includes(query));
-        
-        if (filtered.length === 0) {
-            resultsContainer.innerHTML = `
-                <div class="text-center p-8 bg-white rounded-xl border border-slate-200">
-                    <p class="text-slate-500 font-medium">No fixtures found for "${query}".</p>
-                </div>`;
-            return;
-        }
-        
-        filtered.forEach(m => {
-            const card = document.createElement('div');
-            card.className = "bg-white p-5 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-blue-500";
-            
-            if (m.type === 'Court Match') {
-                card.innerHTML = `
-                    <div class="flex justify-between mb-2">
-                        <span class="text-xs font-bold bg-blue-100 text-blue-800 px-2 rounded uppercase">Weekend Fixture</span>
-                        <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-2 rounded">${m.date}</span>
-                    </div>
-                    <h3 class="font-extrabold text-lg mb-1">${m.title}</h3>
-                    <p class="text-slate-700 font-medium mb-3 bg-slate-50 p-3 rounded-lg border border-slate-100">${m.info}</p>
-                    <div class="text-sm font-semibold text-blue-600">🏸 ${m.court}</div>
-                `;
-            } else {
-                card.innerHTML = `
-                    <div class="flex justify-between mb-2">
-                        <span class="text-xs font-bold bg-purple-100 text-purple-800 px-2 rounded uppercase">Group Stage</span>
-                    </div>
-                    <h3 class="font-extrabold text-lg mb-1">${m.title}</h3>
-                    <p class="text-slate-600 text-sm mb-3">${m.info}</p>
-                    <div class="text-sm font-semibold text-purple-600">🕒 Schedule Block: ${m.court}</div>
-                `;
-            }
-            resultsContainer.appendChild(card);
-        });
+    .hero {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
+      color: #fff;
+      padding: 28px 16px 36px;
+      text-align: center;
+      border-bottom: 3px solid var(--lime);
     }
-</script>
+    .hero-badge {
+      display: inline-block;
+      background: rgba(132, 204, 22, 0.16);
+      color: #bef264;
+      border: 1px solid rgba(132, 204, 22, 0.35);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+    .hero h1 {
+      font-size: clamp(22px, 4vw, 30px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .hero p {
+      color: #cbd5e1;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    .container {
+      max-width: 820px;
+      margin: -20px auto 48px;
+      padding: 0 16px;
+    }
+    .search-card {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08);
+      border: 1px solid var(--border);
+    }
+    .search-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      color: var(--muted);
+      font-size: 18px;
+      pointer-events: none;
+    }
+    #searchInput {
+      width: 100%;
+      padding: 14px 42px 14px 42px;
+      font-size: 16px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: #f8fafc;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    #searchInput:focus {
+      border-color: var(--accent);
+      background: #fff;
+    }
+    .clear-btn {
+      position: absolute;
+      right: 12px;
+      background: #e2e8f0;
+      border: none;
+      color: #475569;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      font-size: 16px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .clear-btn.visible { display: flex; }
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .chip {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid #bfdbfe;
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .chip:hover, .chip.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 16px 0 6px;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: #475569;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tab:hover { border-color: #94a3b8; }
+    .tab.active {
+      background: var(--navy);
+      color: #fff;
+      border-color: var(--navy);
+    }
+    .summary-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 12px 2px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    }
+    .card.fri { border-left-color: #d97706; }
+    .card.sat { border-left-color: #2563eb; }
+    .card.sun { border-left-color: #16a34a; }
+    .card.ko  { border-left-color: #7e22ce; }
+    .card-top {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 9px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-fri { background: var(--fri-bg); color: var(--fri-fg); }
+    .badge-sat { background: var(--sat-bg); color: var(--sat-fg); }
+    .badge-sun { background: var(--sun-bg); color: var(--sun-fg); }
+    .badge-ko  { background: var(--ko-bg);  color: var(--ko-fg); }
+    .badge-court {
+      background: #f1f5f9;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+    .cat-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .matchup-box {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .team-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .team-line.highlight {
+      color: var(--accent);
+      font-weight: 800;
+    }
+    .role-tag {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: #dbeafe;
+      color: #1e40af;
+      white-space: nowrap;
+    }
+    .role-tag.opp {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .vs-divider {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .group-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .group-player {
+      background: #fff;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .group-player.me {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1e3a8a;
+      font-weight: 800;
+    }
+    .note {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .empty {
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 36px 20px;
+      color: var(--muted);
+    }
+    .empty strong {
+      display: block;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-badge">🏸 Nov 20 – Nov 22, 2026 · Bangalore</div>
+    <h1>o9 Badminton Premier League 2026</h1>
+    <p>Search any player to view exact match timings, courts, partners &amp; opponents</p>
+  </header>
+
+  <main class="container">
+    <section class="search-card">
+      <div class="search-row">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Type player name (e.g., Mani Pradeep, Rajeswari, Tharun)..."
+          autocomplete="off"
+        />
+        <button id="clearBtn" class="clear-btn" title="Clear search">×</button>
+      </div>
+      <div id="suggestions" class="suggestions"></div>
+    </section>
+
+    <div class="tabs" id="dayTabs">
+      <button class="tab active" data-filter="ALL">All Fixtures</button>
+      <button class="tab" data-filter="2026-11-20">Fri, Nov 20</button>
+      <button class="tab" data-filter="2026-11-21">Sat, Nov 21</button>
+      <button class="tab" data-filter="2026-11-22">Sun, Nov 22</button>
+      <button class="tab" data-filter="KNOCKOUT">Knockout Brackets</button>
+    </div>
+
+    <div class="summary-bar">
+      <span id="summaryText">Showing all scheduled fixtures</span>
+      <span id="countText"></span>
+    </div>
+
+    <div id="results" class="cards"></div>
+  </main>
+
+  <script>
+    const TOURNAMENT_DATA = {"players":["Abhinav M K","Achyut Koushik A","Aditya Kumar Ray","Anjali Sharma","Arjun G","Arpita Sengupta","Arunkumar","Chaitra Nagaraj","Chaitra Tawari","Chiranth V Dev","Drishti Pandey","Edwin","Gagan Umesh","Garvit Goyal","Gaurav Patyal","Geo","Gopal Kurbet","Harish Kumar Sabbana","Jaison George","Jallapuram Sujith","Jayaraja H A","Jayath Santhosh","K Pranvanth Sundar","Karthik Sathisha","Karthik Thandlam","Kotla Vinay Kumar Reddy","Mahendra Hegde","Mani Pradeep","Manish Maurya","Manoj","Mayank Jain","Mriganka Sarmah","Nagaraj G P","Nagaraj Madiwalar","Nagarjuna Reddy","Nagulan Baskaran","Navateja","Navya Sree","Nikhil Ramisetti","Nikith Seemakurthi","Nikunj Hemani","Nisha Jayakumar","Niteesh T V","Owais Hosmani","Pallavi H B","Parismita Buragohain","Pavan","Peruri Samba Siva Sridhar","Praveen Goura","Rajesh C","Rajeswari","Ranjeet Pratap","Sahana Udupa","Sahithi","Sai Satwik","Samket V Pujari","Sampath Raghav","Sandeep Kumar","Sandeep Mamillapalli","Satyam Kumar Patra","Shiny James","Shubham Ranjan Singh","Shyam Babu","Simi Vasu","Soumya Jha","Sujan C","Sukanya Seshadri","Sumalatha G C","Suprathika Krishna","Sushrut Joshi","Tharun","Uhana Jyothi","Vaishnav M","Vangala Krishna Sai","Venkat Nivas Reddy","Venkat Yagati","Vidyashree Tigadi","Vinay","Vinay Kumar Kashyap","Viraj Joshi"],"aliases":{"Mani Pradeep":["saimani","rebaka","saimani rebaka"],"Venkat Yagati":["venkata","ramana","venkata ramana"],"Sahithi":["settipalle","settipalle sahithi"],"Rajeswari":["raja","raja rajeswari"],"Venkat Nivas Reddy":["sirivenkat","sirivenkat nivas"],"K Pranvanth Sundar":["kolapudi","sundar","kolapudi sundar"],"Sandeep Kumar":["sandeepkumar"],"Pallavi H B":["balaiah","pallavi balaiah"],"Chaitra Nagaraj":["nagaraj"],"Sumalatha G C":["gouda","sumalatha gouda"],"Jayaraja H A":["anjeenappa","jayaraja anjeenappa"],"Vinay":["umadev","vinay umadev"],"Navateja":["singampalli","navateja singampalli"],"Nikhil Ramisetti":["chaitanya","nikhil chaitanya"],"Abhinav M K":["karnatakam","abhinav karnatakam"],"Sujan C":["chidananda","sujan chidananda"],"Vaishnav M":["vaishnav bm"],"Rajesh C":["chandrappa","rajesh chandrappa"],"Nagulan Baskaran":["bhaskar","nagulan bhaskar"]},"events":[{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 1","categoryRaw":"MS Group 4","category":"Men's Singles · Round 1 (Group 4)","players":["Nagulan Baskaran","Niteesh T V","Peruri Samba Siva Sridhar"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 2","categoryRaw":"WS Group B","category":"Women's Singles · Group B","players":["Chaitra Nagaraj","Pallavi H B"],"note":"Round-robin group block (top 1 goes straight to Sun 4:00 PM Final)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 3","categoryRaw":"WS Group A","category":"Women's Singles · Group A","players":["Rajeswari","Sahithi","Chaitra Tawari"],"note":"Round-robin group block (top 1 goes straight to Sun 4:00 PM Final)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 4","categoryRaw":"MS Group 5","category":"Men's Singles · Round 1 (Group 5)","players":["Nagaraj G P","Chiranth V Dev","Rajesh C"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 5","categoryRaw":"MS Group 2","category":"Men's Singles · Round 1 (Group 2)","players":["Arunkumar","Sai Satwik","Karthik Sathisha"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:30","time":"9:30 AM","court":"Court 2","categoryRaw":"MS Group 1","category":"Men's Singles · Round 1 (Group 1)","players":["Manoj","Pavan","Praveen Goura"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"10:20","time":"10:20 AM","court":"Court 1","categoryRaw":"MS Group 8","category":"Men's Singles · Round 1 (Group 8)","players":["Sujan C","Navateja","Jayath Santhosh"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"10:20","time":"10:20 AM","court":"Court 4","categoryRaw":"MS Group 6","category":"Men's Singles · Round 1 (Group 6)","players":["Karthik Thandlam","Venkat Yagati","Satyam Kumar Patra"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"10:20","time":"10:20 AM","court":"Court 5","categoryRaw":"MS Group 7","category":"Men's Singles · Round 1 (Group 7)","players":["Ranjeet Pratap","Kotla Vinay Kumar Reddy","Vaishnav M"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"10:30","time":"10:30 AM","court":"Court 3","categoryRaw":"35+ WD Final","category":"35+ Women's Doubles · Match","side1":"Shiny James / Simi Vasu","side2":"Sukanya Seshadri / Arpita Sengupta","isKnockout":true},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"11:00","time":"11:00 AM","court":"Court 2","categoryRaw":"35+ WS Group A","category":"35+ Women's Singles · Group A","players":["Sukanya Seshadri","Sumalatha G C","Simi Vasu"],"note":"Round-robin group block (top 1 of each group advances to Final)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"11:00","time":"11:00 AM","court":"Court 3","categoryRaw":"35+ WS Group B","category":"35+ Women's Singles · Group B","players":["Shiny James","Vidyashree Tigadi","Arpita Sengupta"],"note":"Round-robin group block (top 1 of each group advances to Final)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"11:40","time":"11:40 AM","court":"Court 1","categoryRaw":"MS Group 10","category":"Men's Singles · Round 1 (Group 10)","players":["Garvit Goyal","Mani Pradeep","Nagaraj Madiwalar"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"11:40","time":"11:40 AM","court":"Court 5","categoryRaw":"MS Group 3","category":"Men's Singles · Round 1 (Group 3)","players":["Tharun","Vinay Kumar Kashyap","Sandeep Kumar"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"13:30","time":"1:30 PM","court":"Court 5","categoryRaw":"MS Group 12","category":"Men's Singles · Round 1 (Group 12)","players":["Shubham Ranjan Singh","Sushrut Joshi","Samket V Pujari"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"13:30","time":"1:30 PM","court":"Courts 1 & 2","categoryRaw":"MS Group 11","category":"Men's Singles · Round 1 (Group 11)","players":["Geo","Nikith Seemakurthi","Owais Hosmani","Vangala Krishna Sai"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"13:30","time":"1:30 PM","court":"Courts 3 & 4","categoryRaw":"MS Group 9","category":"Men's Singles · Round 1 (Group 9)","players":["Aditya Kumar Ray","Abhinav M K","Nikunj Hemani","Arjun G"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"15:00","time":"3:00 PM – 4:00 PM","court":"Courts TBD (Fri 3–4 PM Slot)","categoryRaw":"35+ MS QF1","category":"35+ Men's Singles · QF1","side1":"Mriganka Sarmah","side2":"Manish Maurya","isKnockout":true},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"15:00","time":"3:00 PM – 4:00 PM","court":"Courts TBD (Fri 3–4 PM Slot)","categoryRaw":"35+ MS QF2","category":"35+ Men's Singles · QF2","side1":"Vinay","side2":"Jayaraja H A","isKnockout":true},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"15:00","time":"3:00 PM – 4:00 PM","court":"Courts TBD (Fri 3–4 PM Slot)","categoryRaw":"35+ MS QF3","category":"35+ Men's Singles · QF3","side1":"Sampath Raghav","side2":"Achyut Koushik A","isKnockout":true},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"15:00","time":"3:00 PM – 4:00 PM","court":"Courts TBD (Fri 3–4 PM Slot)","categoryRaw":"35+ MS QF4","category":"35+ Men's Singles · QF4","side1":"Nagarjuna Reddy","side2":"Mahendra Hegde","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 1","categoryRaw":"MD Grp 4","category":"Men's Doubles · Grp 4","side1":"Owais Hosmani / Jallapuram Sujith","side2":"Karthik Sathisha / Gopal Kurbet","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 2","categoryRaw":"MD Grp 7","category":"Men's Doubles · Grp 7","side1":"K Pranvanth Sundar / Peruri Samba Siva Sridhar","side2":"Vangala Krishna Sai / Harish Kumar Sabbana","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 3","categoryRaw":"MD Grp 1","category":"Men's Doubles · Grp 1","side1":"Mani Pradeep / Aditya Kumar Ray","side2":"Nagaraj G P / Suprathika Krishna","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 4","categoryRaw":"MD Grp 3","category":"Men's Doubles · Grp 3","side1":"Mayank Jain / Viraj Joshi","side2":"Venkat Nivas Reddy / Sandeep Kumar","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 5","categoryRaw":"35+ XD Grp A","category":"35+ Mixed Doubles · Grp A","side1":"Jaison George / Sukanya Seshadri","side2":"Jayaraja H A / Vidyashree Tigadi","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:00","time":"12:00 PM","court":"Court 1","categoryRaw":"MD Grp 4","category":"Men's Doubles · Grp 4","side1":"Vaishnav M / Shyam Babu","side2":"Owais Hosmani / Jallapuram Sujith","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:00","time":"12:00 PM","court":"Court 2","categoryRaw":"MD Grp 7","category":"Men's Doubles · Grp 7","side1":"Venkat Yagati / Edwin","side2":"K Pranvanth Sundar / Peruri Samba Siva Sridhar","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:00","time":"12:00 PM","court":"Court 3","categoryRaw":"MD Grp 1","category":"Men's Doubles · Grp 1","side1":"Sai Satwik / Nikhil Ramisetti","side2":"Mani Pradeep / Aditya Kumar Ray","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:00","time":"12:00 PM","court":"Court 4","categoryRaw":"MD Grp 3","category":"Men's Doubles · Grp 3","side1":"Kotla Vinay Kumar Reddy / Navateja","side2":"Mayank Jain / Viraj Joshi","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:20","time":"12:20 PM","court":"Court 5","categoryRaw":"35+ XD Grp A","category":"35+ Mixed Doubles · Grp A","side1":"Mriganka Sarmah / Arpita Sengupta","side2":"Jaison George / Sukanya Seshadri","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:30","time":"12:30 PM","court":"Court 1","categoryRaw":"MD Grp 4","category":"Men's Doubles · Grp 4","side1":"Karthik Sathisha / Gopal Kurbet","side2":"Vaishnav M / Shyam Babu","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:30","time":"12:30 PM","court":"Court 2","categoryRaw":"MD Grp 7","category":"Men's Doubles · Grp 7","side1":"Vangala Krishna Sai / Harish Kumar Sabbana","side2":"Venkat Yagati / Edwin","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:30","time":"12:30 PM","court":"Court 3","categoryRaw":"MD Grp 1","category":"Men's Doubles · Grp 1","side1":"Nagaraj G P / Suprathika Krishna","side2":"Sai Satwik / Nikhil Ramisetti","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:30","time":"12:30 PM","court":"Court 4","categoryRaw":"MD Grp 3","category":"Men's Doubles · Grp 3","side1":"Venkat Nivas Reddy / Sandeep Kumar","side2":"Kotla Vinay Kumar Reddy / Navateja","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"13:30","time":"1:30 PM","court":"Court 1","categoryRaw":"MS QF A","category":"Men's Singles · QF A","side1":"Winner of Round 1 Group 2","side2":"Winner of Round 1 Group 8","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"13:30","time":"1:30 PM","court":"Court 2","categoryRaw":"MS QF B","category":"Men's Singles · QF B","side1":"Winner of Round 1 Group 6","side2":"Winner of Round 1 Group 11","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"13:30","time":"1:30 PM","court":"Court 3","categoryRaw":"MS QF C","category":"Men's Singles · QF C","side1":"Winner of Round 1 Group 7","side2":"Winner of Round 1 Group 1","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"13:30","time":"1:30 PM","court":"Court 4","categoryRaw":"MS QF D","category":"Men's Singles · QF D","side1":"Winner of Round 1 Group 10","side2":"Winner of Round 1 Group 4","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"13:30","time":"1:30 PM","court":"Court 5","categoryRaw":"35+ XD Grp A","category":"35+ Mixed Doubles · Grp A","side1":"Jayaraja H A / Vidyashree Tigadi","side2":"Mriganka Sarmah / Arpita Sengupta","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:00","time":"2:00 PM","court":"Court 1","categoryRaw":"MS QF A","category":"Men's Singles · QF A","side1":"Winner of Round 1 Group 9","side2":"Winner of Round 1 Group 2","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:00","time":"2:00 PM","court":"Court 2","categoryRaw":"MS QF B","category":"Men's Singles · QF B","side1":"Winner of Round 1 Group 5","side2":"Winner of Round 1 Group 6","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:00","time":"2:00 PM","court":"Court 3","categoryRaw":"MS QF C","category":"Men's Singles · QF C","side1":"Winner of Round 1 Group 12","side2":"Winner of Round 1 Group 7","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:00","time":"2:00 PM","court":"Court 4","categoryRaw":"MS QF D","category":"Men's Singles · QF D","side1":"Winner of Round 1 Group 3","side2":"Winner of Round 1 Group 10","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:10","time":"2:10 PM","court":"Court 5","categoryRaw":"XD Grp 2","category":"Mixed Doubles · Grp 2","side1":"Rajesh C / Soumya Jha","side2":"Samket V Pujari / Chaitra Nagaraj","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:30","time":"2:30 PM","court":"Court 1","categoryRaw":"MS QF A","category":"Men's Singles · QF A","side1":"Winner of Round 1 Group 8","side2":"Winner of Round 1 Group 9","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:30","time":"2:30 PM","court":"Court 2","categoryRaw":"MS QF B","category":"Men's Singles · QF B","side1":"Winner of Round 1 Group 11","side2":"Winner of Round 1 Group 5","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:30","time":"2:30 PM","court":"Court 3","categoryRaw":"MS QF C","category":"Men's Singles · QF C","side1":"Winner of Round 1 Group 1","side2":"Winner of Round 1 Group 12","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:30","time":"2:30 PM","court":"Court 4","categoryRaw":"MS QF D","category":"Men's Singles · QF D","side1":"Winner of Round 1 Group 4","side2":"Winner of Round 1 Group 3","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"14:40","time":"2:40 PM","court":"Court 5","categoryRaw":"XD Grp 2","category":"Mixed Doubles · Grp 2","side1":"Vangala Krishna Sai / Sahithi","side2":"Rajesh C / Soumya Jha","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"15:00","time":"3:00 PM","court":"Court 1","categoryRaw":"MD Grp 5","category":"Men's Doubles · Grp 5","side1":"Niteesh T V / Gagan Umesh","side2":"Mriganka Sarmah / Vinay (35+)","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"15:00","time":"3:00 PM","court":"Court 2","categoryRaw":"35+ MS SF2","category":"35+ Men's Singles · SF2","side1":"Winner of 35+ MS QF3","side2":"Winner of 35+ MS QF4","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"15:00","time":"3:00 PM","court":"Court 4","categoryRaw":"35+ MS SF1","category":"35+ Men's Singles · SF1","side1":"Winner of 35+ MS QF1","side2":"Winner of 35+ MS QF2","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"15:10","time":"3:10 PM","court":"Court 3","categoryRaw":"35+ XD Grp B","category":"35+ Mixed Doubles · Grp B","side1":"Sumalatha G C / Nagarjuna Reddy","side2":"Sampath Raghav / Shiny James","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"15:10","time":"3:10 PM","court":"Court 5","categoryRaw":"XD Grp 2","category":"Mixed Doubles · Grp 2","side1":"Samket V Pujari / Chaitra Nagaraj","side2":"Vangala Krishna Sai / Sahithi","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"15:30","time":"3:30 PM","court":"Court 1","categoryRaw":"MD Grp 5","category":"Men's Doubles · Grp 5","side1":"Gaurav Patyal / Sandeep Mamillapalli","side2":"Niteesh T V / Gagan Umesh","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"16:00","time":"4:00 PM","court":"Court 1","categoryRaw":"MD Grp 5","category":"Men's Doubles · Grp 5","side1":"Mriganka Sarmah / Vinay (35+)","side2":"Gaurav Patyal / Sandeep Mamillapalli","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"16:00","time":"4:00 PM","court":"Court 4","categoryRaw":"35+ MS Final","category":"35+ Men's Singles · Final","side1":"Winner of 35+ MS SF1","side2":"Winner of 35+ MS SF2","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"16:00","time":"4:00 PM","court":"Court 5","categoryRaw":"WD Final","category":"Women's Doubles · Final","side1":"Rajeswari / Pallavi H B","side2":"Chaitra Nagaraj / Sumalatha G C","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"16:10","time":"4:10 PM","court":"Court 2","categoryRaw":"35+ XD SF1","category":"35+ Mixed Doubles · SF1","side1":"Group Stage Group A #1","side2":"Group Stage Group B #2","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"16:10","time":"4:10 PM","court":"Court 3","categoryRaw":"35+ XD SF2","category":"35+ Mixed Doubles · SF2","side1":"Group Stage Group B #1","side2":"Group Stage Group A #2","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"16:30","time":"4:30 PM","court":"Court 1","categoryRaw":"MD Grp 6","category":"Men's Doubles · Grp 6","side1":"Chiranth V Dev / Sushrut Joshi","side2":"Shubham Ranjan Singh / Nikith Seemakurthi","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"17:00","time":"5:00 PM","court":"Court 1","categoryRaw":"MD Grp 6","category":"Men's Doubles · Grp 6","side1":"Rajesh C / Samket V Pujari","side2":"Chiranth V Dev / Sushrut Joshi","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"17:20","time":"5:20 PM","court":"Court 2","categoryRaw":"35+ XD Final","category":"35+ Mixed Doubles · Final","side1":"Winner of 35+ XD SF1","side2":"Winner of 35+ XD SF2","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"17:30","time":"5:30 PM","court":"Court 1","categoryRaw":"MD Grp 6","category":"Men's Doubles · Grp 6","side1":"Shubham Ranjan Singh / Nikith Seemakurthi","side2":"Rajesh C / Samket V Pujari","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"09:00","time":"9:00 AM","court":"Court 4","categoryRaw":"MD Grp 2","category":"Men's Doubles · Grp 2","side1":"Tharun / Abhinav M K","side2":"Jayaraja H A / Nagarjuna Reddy (35+)","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"09:00","time":"9:00 AM","court":"Court 5","categoryRaw":"MD Grp 8","category":"Men's Doubles · Grp 8","side1":"Nagulan Baskaran / Nikunj Hemani","side2":"Sampath Raghav / Jaison George (35+)","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"09:30","time":"9:30 AM","court":"Court 4","categoryRaw":"MD Grp 2","category":"Men's Doubles · Grp 2","side1":"Vinay Kumar Kashyap / Manoj","side2":"Tharun / Abhinav M K","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"09:30","time":"9:30 AM","court":"Court 5","categoryRaw":"MD Grp 8","category":"Men's Doubles · Grp 8","side1":"Arunkumar / Praveen Goura","side2":"Nagulan Baskaran / Nikunj Hemani","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"10:00","time":"10:00 AM","court":"Court 4","categoryRaw":"MD Grp 2","category":"Men's Doubles · Grp 2","side1":"Jayaraja H A / Nagarjuna Reddy (35+)","side2":"Vinay Kumar Kashyap / Manoj","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"10:00","time":"10:00 AM","court":"Court 5","categoryRaw":"MD Grp 8","category":"Men's Doubles · Grp 8","side1":"Sampath Raghav / Jaison George (35+)","side2":"Arunkumar / Praveen Goura","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"10:30","time":"10:30 AM","court":"Court 4","categoryRaw":"MD QF1","category":"Men's Doubles · QF1","side1":"Winner of Group Stage Group 1","side2":"Winner of Group Stage Group 6","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"11:00","time":"11:00 AM","court":"Court 5","categoryRaw":"MD QF2","category":"Men's Doubles · QF2","side1":"Winner of Group Stage Group 8","side2":"Winner of Group Stage Group 7","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"11:10","time":"11:10 AM","court":"Court 4","categoryRaw":"XD Grp 3","category":"Mixed Doubles · Grp 3","side1":"Navateja / Uhana Jyothi","side2":"Sai Satwik / Drishti Pandey","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"11:30","time":"11:30 AM","court":"Court 1","categoryRaw":"XD Grp 1","category":"Mixed Doubles · Grp 1","side1":"Kotla Vinay Kumar Reddy / Rajeswari","side2":"Vinay Kumar Kashyap / Anjali Sharma","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"11:30","time":"11:30 AM","court":"Court 2","categoryRaw":"XD Grp 1","category":"Mixed Doubles · Grp 1","side1":"Edwin / Sahana Udupa","side2":"Venkat Yagati / Nisha Jayakumar","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"11:30","time":"11:30 AM","court":"Court 3","categoryRaw":"XD Grp 4","category":"Mixed Doubles · Grp 4","side1":"Jayath Santhosh / Chaitra Tawari","side2":"K Pranvanth Sundar / Pallavi H B","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"11:40","time":"11:40 AM","court":"Court 4","categoryRaw":"XD Grp 3","category":"Mixed Doubles · Grp 3","side1":"Tharun / Parismita Buragohain","side2":"Navateja / Uhana Jyothi","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"11:40","time":"11:40 AM","court":"Court 5","categoryRaw":"MD QF4","category":"Men's Doubles · QF4","side1":"Winner of Group Stage Group 3","side2":"Winner of Group Stage Group 5","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"12:00","time":"12:00 PM","court":"Court 1","categoryRaw":"XD Grp 1","category":"Mixed Doubles · Grp 1","side1":"Kotla Vinay Kumar Reddy / Rajeswari","side2":"Edwin / Sahana Udupa","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"12:00","time":"12:00 PM","court":"Court 2","categoryRaw":"XD Grp 1","category":"Mixed Doubles · Grp 1","side1":"Vinay Kumar Kashyap / Anjali Sharma","side2":"Venkat Yagati / Nisha Jayakumar","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"12:00","time":"12:00 PM","court":"Court 3","categoryRaw":"XD Grp 4","category":"Mixed Doubles · Grp 4","side1":"Mani Pradeep / Navya Sree","side2":"Jayath Santhosh / Chaitra Tawari","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"12:10","time":"12:10 PM","court":"Court 4","categoryRaw":"XD Grp 3","category":"Mixed Doubles · Grp 3","side1":"Sai Satwik / Drishti Pandey","side2":"Tharun / Parismita Buragohain","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"12:20","time":"12:20 PM","court":"Court 5","categoryRaw":"MD SF1","category":"Men's Doubles · SF1","side1":"Winner of MD QF1","side2":"Winner of MD QF2","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"12:30","time":"12:30 PM","court":"Court 1","categoryRaw":"XD Grp 1","category":"Mixed Doubles · Grp 1","side1":"Kotla Vinay Kumar Reddy / Rajeswari","side2":"Venkat Yagati / Nisha Jayakumar","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"12:30","time":"12:30 PM","court":"Court 2","categoryRaw":"XD Grp 1","category":"Mixed Doubles · Grp 1","side1":"Vinay Kumar Kashyap / Anjali Sharma","side2":"Edwin / Sahana Udupa","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"12:30","time":"12:30 PM","court":"Court 3","categoryRaw":"XD Grp 4","category":"Mixed Doubles · Grp 4","side1":"K Pranvanth Sundar / Pallavi H B","side2":"Mani Pradeep / Navya Sree","isKnockout":false},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"13:30","time":"1:30 PM","court":"Court 1","categoryRaw":"XD SF2","category":"Mixed Doubles · SF2","side1":"Winner of Group Stage Group 3","side2":"Winner of Group Stage Group 4","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"13:30","time":"1:30 PM","court":"Court 2","categoryRaw":"MS SF1","category":"Men's Singles · SF1","side1":"Winner of Quarters Group A","side2":"Winner of Quarters Group C","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"13:30","time":"1:30 PM","court":"Court 3","categoryRaw":"MS SF2","category":"Men's Singles · SF2","side1":"Winner of Quarters Group B","side2":"Winner of Quarters Group D","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"13:30","time":"1:30 PM","court":"Court 4","categoryRaw":"XD SF1","category":"Mixed Doubles · SF1","side1":"Winner of Group Stage Group 1","side2":"Winner of Group Stage Group 2","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"13:30","time":"1:30 PM","court":"Court 5","categoryRaw":"MD QF3","category":"Men's Doubles · QF3","side1":"Winner of Group Stage Group 4","side2":"Winner of Group Stage Group 2","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"14:40","time":"2:40 PM","court":"Court 4","categoryRaw":"MD SF2","category":"Men's Doubles · SF2","side1":"Winner of MD QF3","side2":"Winner of MD QF4","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"15:00","time":"3:00 PM","court":"Court 5","categoryRaw":"XD Final","category":"Mixed Doubles · Final","side1":"Winner of XD SF1","side2":"Winner of XD SF2","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"16:00","time":"4:00 PM","court":"Court 3","categoryRaw":"WS Final","category":"Women's Singles · Final","side1":"Winner of Group Stage Group A","side2":"Winner of Group Stage Group B","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"16:00","time":"4:00 PM","court":"Court 5","categoryRaw":"MD Final","category":"Men's Doubles · Final","side1":"Winner of MD SF1","side2":"Winner of MD SF2","isKnockout":true},{"source":"grid","date":"2026-11-22","day":"Sun, Nov 22","time24":"17:00","time":"5:00 PM","court":"Court 3","categoryRaw":"MS Final","category":"Men's Singles · Final","side1":"Winner of MS SF1","side2":"Winner of MS SF2","isKnockout":true}]};
+
+    const searchInput = document.getElementById('searchInput');
+    const clearBtn = document.getElementById('clearBtn');
+    const suggestionsEl = document.getElementById('suggestions');
+    const resultsEl = document.getElementById('results');
+    const summaryText = document
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>o9 Badminton Premier League 2026 — Bangalore Fixtures</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --navy: #0b1528;
+      --navy-mid: #162647;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+      --lime: #84cc16;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --fri-bg: #fef3c7;
+      --fri-fg: #92400e;
+      --sat-bg: #dbeafe;
+      --sat-fg: #1e40af;
+      --sun-bg: #dcfce7;
+      --sun-fg: #166534;
+      --ko-bg: #f3e8ff;
+      --ko-fg: #6b21a8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .hero {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
+      color: #fff;
+      padding: 28px 16px 36px;
+      text-align: center;
+      border-bottom: 3px solid var(--lime);
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(132, 204, 22, 0.16);
+      color: #bef264;
+      border: 1px solid rgba(132, 204, 22, 0.35);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+    .hero h1 {
+      font-size: clamp(22px, 4vw, 30px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .hero p {
+      color: #cbd5e1;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    .container {
+      max-width: 820px;
+      margin: -20px auto 48px;
+      padding: 0 16px;
+    }
+    .search-card {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08);
+      border: 1px solid var(--border);
+    }
+    .search-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-icon {
+      position: absolute;
+      left: 14px;
+      color: var(--muted);
+      font-size: 18px;
+      pointer-events: none;
+    }
+    #searchInput {
+      width: 100%;
+      padding: 14px 42px 14px 42px;
+      font-size: 16px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      background: #f8fafc;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    #searchInput:focus {
+      border-color: var(--accent);
+      background: #fff;
+    }
+    .clear-btn {
+      position: absolute;
+      right: 12px;
+      background: #e2e8f0;
+      border: none;
+      color: #475569;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      font-size: 16px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .clear-btn.visible { display: flex; }
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .chip {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid #bfdbfe;
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .chip:hover, .chip.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 16px 0 6px;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: #475569;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tab:hover { border-color: #94a3b8; }
+    .tab.active {
+      background: var(--navy);
+      color: #fff;
+      border-color: var(--navy);
+    }
+    .summary-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 12px 2px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    }
+    .card.fri { border-left-color: #d97706; }
+    .card.sat { border-left-color: #2563eb; }
+    .card.sun { border-left-color: #16a34a; }
+    .card.ko  { border-left-color: #7e22ce; }
+    .card-top {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 9px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-fri { background: var(--fri-bg); color: var(--fri-fg); }
+    .badge-sat { background: var(--sat-bg); color: var(--sat-fg); }
+    .badge-sun { background: var(--sun-bg); color: var(--sun-fg); }
+    .badge-ko  { background: var(--ko-bg);  color: var(--ko-fg); }
+    .badge-court {
+      background: #f1f5f9;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+    .cat-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .matchup-box {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .team-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .team-line.highlight {
+      color: var(--accent);
+      font-weight: 800;
+    }
+    .role-tag {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: #dbeafe;
+      color: #1e40af;
+      white-space: nowrap;
+    }
+    .role-tag.opp {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .vs-divider {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .group-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .group-player {
+      background: #fff;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .group-player.me {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1e3a8a;
+      font-weight: 800;
+    }
+    .note {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .empty {
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 36px 20px;
+      color: var(--muted);
+    }
+    .empty strong {
+      display: block;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-badge">🏸 Nov 20 – Nov 22, 2026 · Bangalore</div>
+    <h1>o9 Badminton Premier League 2026</h1>
+    <p>Search any player to view exact match timings, courts, partners &amp; opponents</p>
+  </header>
+
+  <main class="container">
+    <section class="search-card">
+      <div class="search-row">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Type player name (e.g., Mani Pradeep, Rajeswari, Tharun)..."
+          autocomplete="off"
+        />
+        <button id="clearBtn" class="clear-btn" title="Clear search">×</button>
+      </div>
+      <div id="suggestions" class="suggestions"></div>
+    </section>
+
+    <div class="tabs" id="dayTabs">
+      <button class="tab active" data-filter="ALL">All Fixtures</button>
+      <button class="tab" data-filter="2026-11-20">Fri, Nov 20</button>
+      <button class="tab" data-filter="2026-11-21">Sat, Nov 21</button>
+      <button class="tab" data-filter="2026-11-22">Sun, Nov 22</button>
+      <button class="tab" data-filter="KNOCKOUT">Knockout Brackets</button>
+    </div>
+
+    <div class="summary-bar">
+      <span id="summaryText">Showing all scheduled fixtures</span>
+      <span id="countText"></span>
+    </div>
+
+    <div id="results" class="cards"></div>
+  </main>
+
+  <script>
+    const TOURNAMENT_DATA = {"players":["Abhinav M K","Achyut Koushik A","Aditya Kumar Ray","Anjali Sharma","Arjun G","Arpita Sengupta","Arunkumar","Chaitra Nagaraj","Chaitra Tawari","Chiranth V Dev","Drishti Pandey","Edwin","Gagan Umesh","Garvit Goyal","Gaurav Patyal","Geo","Gopal Kurbet","Harish Kumar Sabbana","Jaison George","Jallapuram Sujith","Jayaraja H A","Jayath Santhosh","K Pranvanth Sundar","Karthik Sathisha","Karthik Thandlam","Kotla Vinay Kumar Reddy","Mahendra Hegde","Mani Pradeep","Manish Maurya","Manoj","Mayank Jain","Mriganka Sarmah","Nagaraj G P","Nagaraj Madiwalar","Nagarjuna Reddy","Nagulan Baskaran","Navateja","Navya Sree","Nikhil Ramisetti","Nikith Seemakurthi","Nikunj Hemani","Nisha Jayakumar","Niteesh T V","Owais Hosmani","Pallavi H B","Parismita Buragohain","Pavan","Peruri Samba Siva Sridhar","Praveen Goura","Rajesh C","Rajeswari","Ranjeet Pratap","Sahana Udupa","Sahithi","Sai Satwik","Samket V Pujari","Sampath Raghav","Sandeep Kumar","Sandeep Mamillapalli","Satyam Kumar Patra","Shiny James","Shubham Ranjan Singh","Shyam Babu","Simi Vasu","Soumya Jha","Sujan C","Sukanya Seshadri","Sumalatha G C","Suprathika Krishna","Sushrut Joshi","Tharun","Uhana Jyothi","Vaishnav M","Vangala Krishna Sai","Venkat Nivas Reddy","Venkat Yagati","Vidyashree Tigadi","Vinay","Vinay Kumar Kashyap","Viraj Joshi"],"aliases":{"Mani Pradeep":["saimani","rebaka","saimani rebaka"],"Venkat Yagati":["venkata","ramana","venkata ramana"],"Sahithi":["settipalle","settipalle sahithi"],"Rajeswari":["raja","raja rajeswari"],"Venkat Nivas Reddy":["sirivenkat","sirivenkat nivas"],"K Pranvanth Sundar":["kolapudi","sundar","kolapudi sundar"],"Sandeep Kumar":["sandeepkumar"],"Pallavi H B":["balaiah","pallavi balaiah"],"Chaitra Nagaraj":["nagaraj"],"Sumalatha G C":["gouda","sumalatha gouda"],"Jayaraja H A":["anjeenappa","jayaraja anjeenappa"],"Vinay":["umadev","vinay umadev"],"Navateja":["singampalli","navateja singampalli"],"Nikhil Ramisetti":["chaitanya","nikhil chaitanya"],"Abhinav M K":["karnatakam","abhinav karnatakam"],"Sujan C":["chidananda","sujan chidananda"],"Vaishnav M":["vaishnav bm"],"Rajesh C":["chandrappa","rajesh chandrappa"],"Nagulan Baskaran":["bhaskar","nagulan bhaskar"]},"events":[{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 1","categoryRaw":"MS Group 4","category":"Men's Singles · Round 1 (Group 4)","players":["Nagulan Baskaran","Niteesh T V","Peruri Samba Siva Sridhar"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 2","categoryRaw":"WS Group B","category":"Women's Singles · Group B","players":["Chaitra Nagaraj","Pallavi H B"],"note":"Round-robin group block (top 1 goes straight to Sun 4:00 PM Final)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 3","categoryRaw":"WS Group A","category":"Women's Singles · Group A","players":["Rajeswari","Sahithi","Chaitra Tawari"],"note":"Round-robin group block (top 1 goes straight to Sun 4:00 PM Final)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 4","categoryRaw":"MS Group 5","category":"Men's Singles · Round 1 (Group 5)","players":["Nagaraj G P","Chiranth V Dev","Rajesh C"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:00","time":"9:00 AM","court":"Court 5","categoryRaw":"MS Group 2","category":"Men's Singles · Round 1 (Group 2)","players":["Arunkumar","Sai Satwik","Karthik Sathisha"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"09:30","time":"9:30 AM","court":"Court 2","categoryRaw":"MS Group 1","category":"Men's Singles · Round 1 (Group 1)","players":["Manoj","Pavan","Praveen Goura"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"10:20","time":"10:20 AM","court":"Court 1","categoryRaw":"MS Group 8","category":"Men's Singles · Round 1 (Group 8)","players":["Sujan C","Navateja","Jayath Santhosh"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"10:20","time":"10:20 AM","court":"Court 4","categoryRaw":"MS Group 6","category":"Men's Singles · Round 1 (Group 6)","players":["Karthik Thandlam","Venkat Yagati","Satyam Kumar Patra"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"10:20","time":"10:20 AM","court":"Court 5","categoryRaw":"MS Group 7","category":"Men's Singles · Round 1 (Group 7)","players":["Ranjeet Pratap","Kotla Vinay Kumar Reddy","Vaishnav M"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"10:30","time":"10:30 AM","court":"Court 3","categoryRaw":"35+ WD Final","category":"35+ Women's Doubles · Match","side1":"Shiny James / Simi Vasu","side2":"Sukanya Seshadri / Arpita Sengupta","isKnockout":true},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"11:00","time":"11:00 AM","court":"Court 2","categoryRaw":"35+ WS Group A","category":"35+ Women's Singles · Group A","players":["Sukanya Seshadri","Sumalatha G C","Simi Vasu"],"note":"Round-robin group block (top 1 of each group advances to Final)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"11:00","time":"11:00 AM","court":"Court 3","categoryRaw":"35+ WS Group B","category":"35+ Women's Singles · Group B","players":["Shiny James","Vidyashree Tigadi","Arpita Sengupta"],"note":"Round-robin group block (top 1 of each group advances to Final)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"11:40","time":"11:40 AM","court":"Court 1","categoryRaw":"MS Group 10","category":"Men's Singles · Round 1 (Group 10)","players":["Garvit Goyal","Mani Pradeep","Nagaraj Madiwalar"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"11:40","time":"11:40 AM","court":"Court 5","categoryRaw":"MS Group 3","category":"Men's Singles · Round 1 (Group 3)","players":["Tharun","Vinay Kumar Kashyap","Sandeep Kumar"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"13:30","time":"1:30 PM","court":"Court 5","categoryRaw":"MS Group 12","category":"Men's Singles · Round 1 (Group 12)","players":["Shubham Ranjan Singh","Sushrut Joshi","Samket V Pujari"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"13:30","time":"1:30 PM","court":"Courts 1 & 2","categoryRaw":"MS Group 11","category":"Men's Singles · Round 1 (Group 11)","players":["Geo","Nikith Seemakurthi","Owais Hosmani","Vangala Krishna Sai"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"group_block","date":"2026-11-20","day":"Fri, Nov 20","time24":"13:30","time":"1:30 PM","court":"Courts 3 & 4","categoryRaw":"MS Group 9","category":"Men's Singles · Round 1 (Group 9)","players":["Aditya Kumar Ray","Abhinav M K","Nikunj Hemani","Arjun G"],"note":"Round-robin group block (top 1 advances to Sat Quarter Groups)"},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"15:00","time":"3:00 PM – 4:00 PM","court":"Courts TBD (Fri 3–4 PM Slot)","categoryRaw":"35+ MS QF1","category":"35+ Men's Singles · QF1","side1":"Mriganka Sarmah","side2":"Manish Maurya","isKnockout":true},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"15:00","time":"3:00 PM – 4:00 PM","court":"Courts TBD (Fri 3–4 PM Slot)","categoryRaw":"35+ MS QF2","category":"35+ Men's Singles · QF2","side1":"Vinay","side2":"Jayaraja H A","isKnockout":true},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"15:00","time":"3:00 PM – 4:00 PM","court":"Courts TBD (Fri 3–4 PM Slot)","categoryRaw":"35+ MS QF3","category":"35+ Men's Singles · QF3","side1":"Sampath Raghav","side2":"Achyut Koushik A","isKnockout":true},{"source":"grid","date":"2026-11-20","day":"Fri, Nov 20","time24":"15:00","time":"3:00 PM – 4:00 PM","court":"Courts TBD (Fri 3–4 PM Slot)","categoryRaw":"35+ MS QF4","category":"35+ Men's Singles · QF4","side1":"Nagarjuna Reddy","side2":"Mahendra Hegde","isKnockout":true},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 1","categoryRaw":"MD Grp 4","category":"Men's Doubles · Grp 4","side1":"Owais Hosmani / Jallapuram Sujith","side2":"Karthik Sathisha / Gopal Kurbet","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 2","categoryRaw":"MD Grp 7","category":"Men's Doubles · Grp 7","side1":"K Pranvanth Sundar / Peruri Samba Siva Sridhar","side2":"Vangala Krishna Sai / Harish Kumar Sabbana","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 3","categoryRaw":"MD Grp 1","category":"Men's Doubles · Grp 1","side1":"Mani Pradeep / Aditya Kumar Ray","side2":"Nagaraj G P / Suprathika Krishna","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 4","categoryRaw":"MD Grp 3","category":"Men's Doubles · Grp 3","side1":"Mayank Jain / Viraj Joshi","side2":"Venkat Nivas Reddy / Sandeep Kumar","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"11:30","time":"11:30 AM","court":"Court 5","categoryRaw":"35+ XD Grp A","category":"35+ Mixed Doubles · Grp A","side1":"Jaison George / Sukanya Seshadri","side2":"Jayaraja H A / Vidyashree Tigadi","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:00","time":"12:00 PM","court":"Court 1","categoryRaw":"MD Grp 4","category":"Men's Doubles · Grp 4","side1":"Vaishnav M / Shyam Babu","side2":"Owais Hosmani / Jallapuram Sujith","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:00","time":"12:00 PM","court":"Court 2","categoryRaw":"MD Grp 7","category":"Men's Doubles · Grp 7","side1":"Venkat Yagati / Edwin","side2":"K Pranvanth Sundar / Peruri Samba Siva Sridhar","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:00","time":"12:00 PM","court":"Court 3","categoryRaw":"MD Grp 1","category":"Men's Doubles · Grp 1","side1":"Sai Satwik / Nikhil Ramisetti","side2":"Mani Pradeep / Aditya Kumar Ray","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:00","time":"12:00 PM","court":"Court 4","categoryRaw":"MD Grp 3","category":"Men's Doubles · Grp 3","side1":"Kotla Vinay Kumar Reddy / Navateja","side2":"Mayank Jain / Viraj Joshi","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:20","time":"12:20 PM","court":"Court 5","categoryRaw":"35+ XD Grp A","category":"35+ Mixed Doubles · Grp A","side1":"Mriganka Sarmah / Arpita Sengupta","side2":"Jaison George / Sukanya Seshadri","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:30","time":"12:30 PM","court":"Court 1","categoryRaw":"MD Grp 4","category":"Men's Doubles · Grp 4","side1":"Karthik Sathisha / Gopal Kurbet","side2":"Vaishnav M / Shyam Babu","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:30","time":"12:30 PM","court":"Court 2","categoryRaw":"MD Grp 7","category":"Men's Doubles · Grp 7","side1":"Vangala Krishna Sai / Harish Kumar Sabbana","side2":"Venkat Yagati / Edwin","isKnockout":false},{"source":"grid","date":"2026-11-21","day":"Sat, Nov 21","time24":"12:30","time":"12:30 PM","court":"Court 3","categoryRaw":"MD Grp 1","category":"Men's Doubles · Grp 1","side1":"Nagaraj G P / Suprathika Krishna","side2":"Sai Sat

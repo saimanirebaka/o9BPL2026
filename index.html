@@ -1,0 +1,147 @@
+<script>
+    let allMatches = [];
+
+    // Automatically load the Excel file when the page opens
+    window.onload = async () => {
+        try {
+            // Make sure the filename exactly matches the one in your folder
+            const response = await fetch('./o9 Badminton Premier league 2026 (Bangalore).xlsx');
+            const arrayBuffer = await response.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, {type: 'array'});
+            
+            workbook.SheetNames.forEach(sheetName => {
+                if(sheetName.includes('Form Responses')) return;
+                
+                const sheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: ''});
+                
+                if (sheetName === 'Court Grid') {
+                    parseCourtGrid(json);
+                } else {
+                    parseCategorySheet(sheetName, json);
+                }
+            });
+
+            // Hide upload UI (not needed anymore) and show search
+            document.getElementById('upload-section').classList.add('hidden');
+            document.getElementById('search-section').classList.remove('hidden');
+            document.getElementById('search-box').focus();
+        } catch (error) {
+            console.error("Error loading Excel file:", error);
+            document.getElementById('upload-section').innerHTML = `<p class="text-red-600 font-bold">Error loading fixtures. Make sure the Excel file is uploaded alongside the HTML.</p>`;
+        }
+    };
+
+    document.getElementById('search-box').addEventListener('input', performSearch);
+
+    function parseCourtGrid(data) {
+        let currentDate = "Date TBD";
+        for (let r = 0; r < data.length; r++) {
+            const row = data[r];
+            if (!row || row.length === 0) continue;
+            
+            const firstCell = String(row[0]).trim();
+            if (firstCell.includes('2026-')) {
+                currentDate = firstCell.split(' ')[0];
+                continue;
+            }
+            if (!firstCell || firstCell.toLowerCase().includes('time') || firstCell.toLowerCase().includes('lunch')) continue;
+            
+            for (let c = 1; c < 6; c++) {
+                const cell = String(row[c]).trim();
+                if (cell && cell.includes('·') && cell.includes('vs')) {
+                    let matchTitle = "Match";
+                    let matchInfo = cell;
+                    
+                    if (cell.includes('|')) {
+                        const parts = cell.split('|');
+                        matchTitle = parts[0].trim();
+                        matchInfo = parts[1].trim();
+                    }
+                    allMatches.push({
+                        type: 'Court Match', sheet: 'Court Grid', date: currentDate,
+                        title: matchTitle, info: matchInfo, rawText: cell, court: `Court ${c}`
+                    });
+                }
+            }
+        }
+    }
+
+    function parseCategorySheet(sheetName, data) {
+        let currentGroup = "";
+        let currentSchedule = "";
+        
+        for (let r = 0; r < data.length; r++) {
+            const row = data[r];
+            if (!row || row.length === 0) continue;
+            
+            let groupName = "";
+            let rowSchedule = "";
+            
+            row.forEach(cell => {
+                const text = String(cell).trim();
+                if (!text) return;
+                if (text.toLowerCase().includes('group') || text.toLowerCase().includes('grp')) groupName = text;
+                if (text.includes('·') && text.includes('Court')) rowSchedule = text;
+            });
+            
+            if (groupName) currentGroup = groupName;
+            if (rowSchedule) currentSchedule = rowSchedule;
+            
+            const rowText = row.filter(cell => String(cell).trim() !== '').join(" | ");
+            
+            if (rowText.length > 5 && !rowText.includes('Day · time') && !rowText.toLowerCase().includes('advances')) {
+                 allMatches.push({
+                    type: 'Group Bracket', sheet: sheetName, date: 'Check Specific Timings',
+                    title: `${sheetName} ${currentGroup ? '- ' + currentGroup : ''}`,
+                    info: rowText, rawText: rowText, court: currentSchedule || 'TBD'
+                });
+            }
+        }
+    }
+
+    function performSearch(e) {
+        const query = e.target.value.toLowerCase().trim();
+        const resultsContainer = document.getElementById('results');
+        resultsContainer.innerHTML = '';
+        
+        if (query.length < 2) return;
+        
+        const filtered = allMatches.filter(m => m.rawText.toLowerCase().includes(query));
+        
+        if (filtered.length === 0) {
+            resultsContainer.innerHTML = `
+                <div class="text-center p-8 bg-white rounded-xl border border-slate-200">
+                    <p class="text-slate-500 font-medium">No fixtures found for "${query}".</p>
+                </div>`;
+            return;
+        }
+        
+        filtered.forEach(m => {
+            const card = document.createElement('div');
+            card.className = "bg-white p-5 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-blue-500";
+            
+            if (m.type === 'Court Match') {
+                card.innerHTML = `
+                    <div class="flex justify-between mb-2">
+                        <span class="text-xs font-bold bg-blue-100 text-blue-800 px-2 rounded uppercase">Weekend Fixture</span>
+                        <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-2 rounded">${m.date}</span>
+                    </div>
+                    <h3 class="font-extrabold text-lg mb-1">${m.title}</h3>
+                    <p class="text-slate-700 font-medium mb-3 bg-slate-50 p-3 rounded-lg border border-slate-100">${m.info}</p>
+                    <div class="text-sm font-semibold text-blue-600">🏸 ${m.court}</div>
+                `;
+            } else {
+                card.innerHTML = `
+                    <div class="flex justify-between mb-2">
+                        <span class="text-xs font-bold bg-purple-100 text-purple-800 px-2 rounded uppercase">Group Stage</span>
+                    </div>
+                    <h3 class="font-extrabold text-lg mb-1">${m.title}</h3>
+                    <p class="text-slate-600 text-sm mb-3">${m.info}</p>
+                    <div class="text-sm font-semibold text-purple-600">🕒 Schedule Block: ${m.court}</div>
+                `;
+            }
+            resultsContainer.appendChild(card);
+        });
+    }
+</script>
